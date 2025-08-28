@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:apidemo/Model/accountMaster_models.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -11,11 +10,12 @@ import '../Model/item_detail.dart';
 import '../Model/item_master.dart';
 import '../Model/salesReport_Models/salesInvoiceDetail_model.dart';
 import '../Model/salesReport_Models/salesInvoiceMaster_model.dart';
-
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 class HttpDataServices extends GetxService {
   static const String _baseUrl = 'http://103.26.205.120:5000';
+  static const String _filename = 'softagri.mdb';
   final GetStorage _storage = GetStorage();
   final RxList<AccountMaster_Model> accountMasterCache = <AccountMaster_Model>[].obs;
   final RxList<AllAccounts_Model> allAccountsCache = <AllAccounts_Model>[].obs;
@@ -36,7 +36,7 @@ class HttpDataServices extends GetxService {
 
   final Connectivity _connectivity = Connectivity();
   final RxBool isOnline = true.obs;
-  final RxBool isRefreshing = false.obs;
+  final RxBool isRefreshing = false.obs; // Added for refresh state tracking
 
   @override
   void onInit() {
@@ -70,40 +70,179 @@ class HttpDataServices extends GetxService {
     _storage.write('subfolder', subfolderName);
   }
 
-  Uri _buildUrl(String table, {int page = 1, int perPage = 100}) {
+  Uri _buildUrl(String table) {
     return Uri.parse(
-      '$_baseUrl/read_table?subfolder=$subfolder/20252026&filename=softagri.mdb&table=$table&page=$page&per_page=$perPage',
+      '$_baseUrl/read_table?subfolder=$subfolder&filename=$_filename&table=$table',
     );
   }
 
-  Future<Map<String, dynamic>> _fetchPaginatedData(String table, {int page = 1, int perPage = 100}) async {
-    try {
-      final response = await http.get(_buildUrl(table, page: page, perPage: perPage));
+  Future<List<T>> _fetchWithRetry<T>({
+    required Future<List<T>> Function() fetchFunction,
+    required String table,
+  }) async {
+    int attempt = 0;
+    while (attempt < _maxRetries) {
+      try {
+        // Check server availability before attempting
+        final serverAvailable = await checkServerAvailability();
+        if (!serverAvailable) {
+          throw Exception('Server not available');
+        }
 
-      if (response.statusCode == 200) {
-        final decodedResponse = json.decode(response.body);
-        return decodedResponse;
-      } else {
-        throw Exception('Failed to load $table data: ${response.statusCode}');
+        return await fetchFunction().timeout(_apiTimeout);
+      } catch (e) {
+        attempt++;
+        print('Attempt $attempt failed for $table: $e');
+
+        if (attempt == _maxRetries) {
+          rethrow;
+        }
+
+        // Exponential backoff
+        await Future.delayed(_retryDelay * attempt);
       }
+    }
+    throw Exception('Failed after $_maxRetries attempts');
+  }
+
+  bool _hasToJsonMethod(dynamic object) {
+    try {
+      return object.toJson() is Map<String, dynamic>;
     } catch (e) {
-      rethrow;
+      return false;
     }
   }
 
-  Future<List<T>> fetchAllPaginatedData<T>({
+  // This is the updated method to fix the type casting and caching issue.
+  Future<List<T>> fetchWithCache<T>({
     required String table,
     required T Function(Map<String, dynamic>) fromJson,
-    String? cacheKey,
+    required String cacheKey,
     bool forceRefresh = false,
   }) async {
+    print('Fetching $table with forceRefresh: $forceRefresh');
+
     if (subfolder.isEmpty) {
       throw Exception('Subfolder not set. Please log in first.');
     }
 
-    // Check cache first if not forcing refresh
-    if (!forceRefresh && cacheKey != null) {
-      final cachedData = _storage.read(cacheKey);
+    final hasConnection = await checkConnection();
+    dynamic cachedData;
+
+    try {
+      final now = DateTime.now();
+
+      // Clear cache if forcing refresh
+      if (forceRefresh) {
+        await _storage.remove(cacheKey);
+        print('Force refresh - cleared cache for $cacheKey');
+      }
+
+      // Try to read cached data
+      cachedData = _storage.read(cacheKey);
+
+      // Handle cached data if it exists and we're not forcing refresh
+      if (cachedData != null && !forceRefresh) {
+        try {
+          List<dynamic> dataList;
+
+          // Case 1: Cached data is already a List (old format)
+          if (cachedData is List) {
+            print('Returning cached data in List format for $table');
+            dataList = cachedData;
+          }
+          // Case 2: Cached data is a Map with 'data' key (new format)
+          else if (cachedData is Map && cachedData.containsKey('data')) {
+            print('Returning cached data in Map format for $table');
+            dataList = cachedData['data'] as List<dynamic>;
+          }
+          // Case 3: Cached data is a JSON string
+          else if (cachedData is String) {
+            print('Returning cached data in String format for $table');
+            final decoded = json.decode(cachedData);
+            if (decoded is List) {
+              dataList = decoded;
+            } else if (decoded is Map && decoded.containsKey('data')) {
+              dataList = decoded['data'] as List<dynamic>;
+            } else {
+              throw Exception('Invalid cached data format');
+            }
+          } else {
+            throw Exception('Unknown cached data format');
+          }
+
+          return dataList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
+        } catch (e, stack) {
+          debugPrint('Error parsing cached data for $table: $e\n$stack');
+          await _storage.remove(cacheKey); // Corrupted cache, so remove it
+        }
+      }
+
+      // If no connection and no valid cached data
+      if (!hasConnection) {
+        throw Exception('No internet connection and no valid cached data available');
+      }
+
+      // Fetch from API with retry logic
+      print('Making API call for $table');
+      final response = await _fetchWithRetry(
+        table: table,
+        fetchFunction: () async {
+          final response = await http.get(_buildUrl(table));
+          if (response.statusCode == 200) {
+            final decodedResponse = json.decode(response.body);
+            final List<dynamic> data = decodedResponse['data'] ?? [];
+            return data.map((json) => fromJson(json)).toList();
+          } else {
+            throw Exception('Failed to load $table data: ${response.statusCode}');
+          }
+        },
+      );
+
+      // Cache the successful response with proper serialization
+      final cacheData = {
+        'timestamp': now.toIso8601String(),
+        'data': response.map((item) {
+          // Convert each item to JSON based on its type
+          if (item is SalesInvoiceMaster) {
+            return item.toJson();
+          } else if (item is SalesInvoiceDetail) {
+            return item.toJson();
+          } else if (item is AccountMaster_Model) {
+            return item.toJson();
+          } else if (item is AllAccounts_Model) {
+            return item.toJson();
+          } else if (item is CustomerInfoModel) {
+            return item.toJson();
+          } else if (item is ItemMaster) {
+            return item.toJson();
+          } else if (item is ItemDetail) {
+            return item.toJson();
+          } else if (item is Map<String, dynamic>) {
+            return item;
+          } else {
+            // For any other type, try to call toJson() dynamically
+            try {
+              final dynamicItem = item as dynamic;
+              if (dynamicItem.toJson != null) {
+                return dynamicItem.toJson();
+              }
+            } catch (e) {
+              debugPrint('Failed to serialize item of type ${item.runtimeType}: $e');
+            }
+            throw Exception('Unsupported type for caching: ${item.runtimeType}');
+          }
+        }).toList(),
+      };
+
+      await _storage.write(cacheKey, cacheData);
+      print('Successfully fetched ${response.length} $table records and cached them');
+      return response;
+
+    } catch (e, stack) {
+      debugPrint('Error in fetchWithCache for $table: $e\n$stack');
+
+      // If API call fails, fall back to expired cache if it exists
       if (cachedData != null) {
         try {
           List<dynamic> dataList;
@@ -114,95 +253,32 @@ class HttpDataServices extends GetxService {
             dataList = cachedData['data'] as List<dynamic>;
           } else if (cachedData is String) {
             final decoded = json.decode(cachedData);
-            dataList = decoded is List ? decoded : decoded['data'] as List<dynamic>;
+            if (decoded is List) {
+              dataList = decoded;
+            } else if (decoded is Map && decoded.containsKey('data')) {
+              dataList = decoded['data'] as List<dynamic>;
+            } else {
+              throw Exception('Invalid cached data format');
+            }
           } else {
-            throw Exception('Invalid cached data format');
+            throw Exception('Unknown cached data format');
           }
 
+          print('API call failed, falling back to cached data for $table');
           return dataList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
-        } catch (e) {
-          // Cache is corrupted, remove it
-          await _storage.remove(cacheKey);
+        } catch (fallbackError, fallbackStack) {
+          debugPrint('Error falling back to cache: $fallbackError\n$fallbackStack');
+          throw Exception('Failed to fetch data and cache is corrupted: $fallbackError');
         }
       }
-    }
-
-    // Fetch all data with pagination
-    List<T> allData = [];
-    int currentPage = 1;
-    bool hasMore = true;
-
-    while (hasMore) {
-      try {
-        final response = await _fetchPaginatedData(table, page: currentPage, perPage: 100);
-        final List<dynamic> pageData = response['data'] ?? [];
-
-        if (pageData.isEmpty) {
-          hasMore = false;
-        } else {
-          allData.addAll(pageData.map((json) => fromJson(json)).toList());
-          currentPage++;
-
-          // Check if we've reached the last page
-          final pagination = response['pagination'] ?? {};
-          hasMore = pagination['has_next'] ?? (pageData.length == 100);
-        }
-      } catch (e) {
-        // If we have some data, return it with a warning
-        if (allData.isNotEmpty) {
-          debugPrint('Partial data loaded for $table: $e');
-          return allData;
-        }
-        rethrow;
-      }
-    }
-
-    // Cache the data if a cache key is provided
-    if (cacheKey != null) {
-      final cacheData = {
-        'timestamp': DateTime.now().toIso8601String(),
-        'data': allData.map((item) => _convertToJson(item)).toList(),
-      };
-      await _storage.write(cacheKey, cacheData);
-    }
-
-    return allData;
-  }
-
-  dynamic _convertToJson(dynamic item) {
-    if (item is SalesInvoiceMaster) {
-      return item.toJson();
-    } else if (item is SalesInvoiceDetail) {
-      return item.toJson();
-    } else if (item is AccountMaster_Model) {
-      return item.toJson();
-    } else if (item is AllAccounts_Model) {
-      return item.toJson();
-    } else if (item is CustomerInfoModel) {
-      return item.toJson();
-    } else if (item is ItemMaster) {
-      return item.toJson();
-    } else if (item is ItemDetail) {
-      return item.toJson();
-    } else if (item is Map<String, dynamic>) {
-      return item;
-    } else {
-      try {
-        final dynamicItem = item as dynamic;
-        if (dynamicItem.toJson != null) {
-          return dynamicItem.toJson();
-        }
-      } catch (e) {
-        debugPrint('Failed to serialize item: $e');
-      }
-      return {};
+      rethrow;
     }
   }
 
-  // Update all fetch methods to use the new paginated approach
+  // Specific data fetch methods with improved error handling
   Future<List<ItemMaster>> fetchItemMaster({bool forceRefresh = false}) async {
     try {
-      return await fetchAllPaginatedData(
+      return await fetchWithCache(
         table: 'ItemMaster',
         fromJson: ItemMaster.fromJson,
         cacheKey: 'itemMaster',
@@ -216,7 +292,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<ItemDetail>> fetchItemDetail({bool forceRefresh = false}) async {
     try {
-      return await fetchAllPaginatedData(
+      return await fetchWithCache(
         table: 'ItemDetail',
         fromJson: ItemDetail.fromJson,
         cacheKey: 'itemDetail',
@@ -230,7 +306,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<SalesInvoiceMaster>> fetchSalesInvoiceMaster({bool forceRefresh = false}) async {
     try {
-      return await fetchAllPaginatedData(
+      return await fetchWithCache(
         table: 'SalesInvoiceMaster',
         fromJson: SalesInvoiceMaster.fromJson,
         cacheKey: 'salesInvoiceMaster',
@@ -244,7 +320,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<SalesInvoiceDetail>> fetchSalesInvoiceDetails({bool forceRefresh = false}) async {
     try {
-      return await fetchAllPaginatedData(
+      return await fetchWithCache(
         table: 'SalesInvoiceDetails',
         fromJson: SalesInvoiceDetail.fromJson,
         cacheKey: 'salesInvoiceDetails',
@@ -258,7 +334,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<AccountMaster_Model>> fetchAccountMaster({bool forceRefresh = false}) async {
     try {
-      final data = await fetchAllPaginatedData(
+      final data = await fetchWithCache(
         table: 'AccountMaster',
         fromJson: AccountMaster_Model.fromJson,
         cacheKey: 'accountMaster',
@@ -278,7 +354,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<AllAccounts_Model>> fetchAllAccounts({bool forceRefresh = false}) async {
     try {
-      final data = await fetchAllPaginatedData(
+      final data = await fetchWithCache(
         table: 'AllAccounts',
         fromJson: AllAccounts_Model.fromJson,
         cacheKey: 'allAccounts',
@@ -298,7 +374,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<CustomerInfoModel>> fetchCustomerInfo({bool forceRefresh = false}) async {
     try {
-      final data = await fetchAllPaginatedData(
+      final data = await fetchWithCache(
         table: 'CustomerInformation',
         fromJson: CustomerInfoModel.fromJson,
         cacheKey: 'customerInformation',
@@ -318,7 +394,7 @@ class HttpDataServices extends GetxService {
 
   Future<List<CustomerInfoModel>> fetchSupplierInfo({bool forceRefresh = false}) async {
     try {
-      final data = await fetchAllPaginatedData(
+      final data = await fetchWithCache(
         table: 'SupplierInformation',
         fromJson: CustomerInfoModel.fromJson,
         cacheKey: 'supplierInformation',
@@ -349,17 +425,19 @@ class HttpDataServices extends GetxService {
     final cachedData = _storage.read(key);
     if (cachedData == null) return 'No cached data';
 
-    try {
-      if (cachedData is Map && cachedData.containsKey('timestamp')) {
-        final cacheTime = DateTime.parse(cachedData['timestamp']);
-        final age = DateTime.now().difference(cacheTime);
+    // This method needs to handle the new caching format
+    if (cachedData is List) {
+      return 'Data stored directly as a list';
+    }
 
-        if (age > _cacheDuration) {
-          return 'Cache expired ${age.inHours}h ago';
-        }
-        return 'Cached ${age.inMinutes}m ago';
+    try {
+      final cacheTime = DateTime.parse(cachedData['timestamp']);
+      final age = DateTime.now().difference(cacheTime);
+
+      if (age > _cacheDuration) {
+        return 'Cache expired ${age.inHours}h ago';
       }
-      return 'Cached (legacy format)';
+      return 'Cached ${age.inMinutes}m ago';
     } catch (e) {
       return 'Invalid cached data format';
     }
@@ -369,23 +447,15 @@ class HttpDataServices extends GetxService {
     final cachedData = _storage.read(key);
     if (cachedData == null) return false;
 
-    try {
-      if (cachedData is Map && cachedData.containsKey('timestamp')) {
-        final cacheTime = DateTime.parse(cachedData['timestamp']);
-        return DateTime.now().difference(cacheTime) <= _cacheDuration;
-      }
-      // Legacy format - consider it valid
-      return true;
-    } catch (e) {
-      return false;
-    }
+    // This method no longer checks for time validity, just existence.
+    return cachedData is Map || cachedData is List;
   }
 
+  // New method to force clear specific cache
   Future<void> clearSpecificCache(String cacheKey) async {
     print('Clearing specific cache for $cacheKey');
     await _storage.remove(cacheKey);
   }
-
   Future<bool> checkServerAvailability() async {
     try {
       final response = await http.get(

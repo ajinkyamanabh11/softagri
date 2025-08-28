@@ -10,11 +10,9 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../Screens/loginpage.dart';
 import '../Services/auth_service.dart';
 import '../Services/http_data_service.dart';
-import '../Screens/data_loading_screen.dart';
 import '../routes/routes.dart';
 import '../utils/preference_manager.dart';
 
-// login_controller.dart - Remove the useDeviceAuth option and make app lock compulsory
 class LoginController extends GetxController {
   final HttpDataServices _httpDataServices = Get.find<HttpDataServices>();
   final Connectivity _connectivity = Connectivity();
@@ -69,43 +67,39 @@ class LoginController extends GetxController {
         return false;
       }
 
-      final response = await http.get(
-        Uri.parse('${_httpDataServices.baseUrl}/get_credentials?subfolder=$username'),
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['username'] != null) {
-          // Ensure data persistence
-          await box.write('username', username);
-          await box.write('subfolder', username);
-          await box.save(); // Force save to disk
-
-          _httpDataServices.setSubfolder(username);
-
-          // Always store credentials for app lock
-          await _authService.storeCredentials(username);
-
-          // Check if user has completed walkthrough
-          final hasSeenWalkthrough = await PreferenceManager.hasSeenWalkthrough();
-
-          if (!hasSeenWalkthrough) {
-            Get.offAllNamed(Routes.walkthrough);
-          } else {
-            // Go to app lock screen instead of data loading
-            Get.offAllNamed(Routes.appLock);
-          }
-          return true;
-        }
+      // Check if the user folder exists
+      final folderExists = await _checkUserFolderExists(username);
+      if (!folderExists) {
+        Get.snackbar(
+            "Error",
+            "Invalid User ID or no data available",
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red
+        );
+        return false;
       }
 
-      Get.snackbar(
-          "Error",
-          "Invalid User Id Number",
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red
-      );
+      // Store user data
+      await box.write('username', username);
+      await box.write('subfolder', username);
+      await box.save(); // Force save to disk
+
+      _httpDataServices.setSubfolder(username);
+
+      // Always store credentials for app lock
+      await _authService.storeCredentials(username);
+
+      // Check if user has completed walkthrough
+      final hasSeenWalkthrough = await PreferenceManager.hasSeenWalkthrough();
+
+      if (!hasSeenWalkthrough) {
+        Get.offAllNamed(Routes.walkthrough);
+      } else {
+        // Go to app lock screen instead of data loading
+        Get.offAllNamed(Routes.appLock);
+      }
+      return true;
 
     } on SocketException catch (e) {
       Get.snackbar(
@@ -149,7 +143,25 @@ class LoginController extends GetxController {
     return false;
   }
 
-// Add this helper method to test server connectivity
+  // Check if user folder exists using the new endpoint
+  Future<bool> _checkUserFolderExists(String username) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${_httpDataServices.baseUrl}/check_user_folder?username=$username'),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['folder_exists'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error checking user folder: $e');
+      return false;
+    }
+  }
+
+  // Test server connectivity
   Future<bool> _testServerConnectivity() async {
     try {
       final response = await http.get(

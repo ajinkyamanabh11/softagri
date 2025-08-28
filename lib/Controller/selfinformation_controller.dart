@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:get/get.dart';
+import 'package:get/get_state_manager/src/simple/get_controllers.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -35,7 +37,7 @@ class CompanyController extends GetxController {
       }
 
       final response = await http.get(Uri.parse(
-        'http://103.26.205.120:5000/read_table?subfolder=$userIdentifier/20252026&filename=softagri.mdb&table=SelfInformation',
+        'http://103.26.205.120:5000/read_table?subfolder=$userIdentifier&filename=softagri.mdb&table=SelfInformation',
       ));
 
       if (response.statusCode == 200) {
