@@ -58,14 +58,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    // final Color surfaceColor = Theme.of(context).colorScheme.surface;
-    // final Color surfaceVariantColor = Theme.of(
-    //   context,
-    // ).colorScheme.surfaceVariant;
-    // final Color cardColor = Theme.of(context).cardColor;
-    // final Color errorColor = Theme.of(context).colorScheme.error;
-    // final Color outlineColor = Theme.of(context).colorScheme.outline;
-    // final Color shadowColor = Theme.of(context).shadowColor;
 
     return WillPopScope(
       onWillPop: () async {
@@ -119,59 +111,48 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
           final txns = ctrl.filtered.cast<AllAccounts_Model>();
           final net = ctrl.drTotal.value - ctrl.crTotal.value;
 
-          return Stack(
-            children: [
-              RefreshIndicator(
-                onRefresh: () async => ctrl.refreshData(),
-                color: primaryColor, // Use theme primary color
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    _autocomplete(names, context), // Pass context
-                    const CacheStatusIndicator(status: ''),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        controller: scrollCtrl,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(12, 20, 12, 120),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Obx(
-                              () => _messages(names, context),
-                            ), // Pass context
-                            if (txns.isNotEmpty) _paginatedTable(context, txns),
-                          ],
-                        ),
-                      ),
-                    ),
+          return RefreshIndicator(
+            onRefresh: () async => ctrl.refreshData(),
+            color: primaryColor, // Use theme primary color
+            child: SingleChildScrollView(
+              controller: scrollCtrl,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 20, 12, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _autocomplete(names, context), // Pass context
+                  const SizedBox(height: 12),
+                  const CacheStatusIndicator(status: ''),
+                  const SizedBox(height: 20),
+                  Obx(
+                        () => _messages(names, context),
+                  ), // Pass context
+                  if (txns.isNotEmpty) ...[
+                    _paginatedTable(context, txns, ctrl.drTotal.value, ctrl.crTotal.value),
+                    const SizedBox(height: 20),
+                    _totals(net, context), // Totals now appears after the table
                   ],
-                ),
+                ],
               ),
-              Positioned(
-                bottom: 0,
-                left: 16,
-                right: 16,
-                child: _totals(net, context), // Pass context
-              ),
-            ],
+            ),
           );
         }),
         floatingActionButton: Obx(
-          () => showFab.value
+              () => showFab.value
               ? FloatingActionButton(
-                  heroTag: 'topBtn',
-                  backgroundColor: primaryColor, // Use theme primary color
-                  onPressed: () => scrollCtrl.animateTo(
-                    0,
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeOut,
-                  ),
-                  child: Icon(
-                    Icons.arrow_upward,
-                    color: onPrimaryColor,
-                  ), // Use theme onPrimary color
-                )
+            heroTag: 'topBtn',
+            backgroundColor: primaryColor, // Use theme primary color
+            onPressed: () => scrollCtrl.animateTo(
+              0,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+            ),
+            child: Icon(
+              Icons.arrow_upward,
+              color: onPrimaryColor,
+            ), // Use theme onPrimary color
+          )
               : const SizedBox.shrink(),
         ),
       ),
@@ -188,7 +169,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
       context,
     ).colorScheme.surfaceVariant;
     final Color cardColor = Theme.of(context).cardColor;
-    //final Color shadowColor = Theme.of(context).shadowColor;
 
     return RawAutocomplete<String>(
       textEditingController: searchCtrl,
@@ -214,21 +194,21 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
           suffixIcon: t.text.isEmpty
               ? null
               : IconButton(
-                  icon: Icon(
-                    Icons.clear,
-                    color: Theme.of(c).iconTheme.color,
-                  ), // Use theme icon color
-                  onPressed: () {
-                    t.clear();
-                    searchQ.value = '';
-                    ctrl.clearFilter();
-                    FocusScope.of(context).unfocus();
-                  },
-                ),
+            icon: Icon(
+              Icons.clear,
+              color: Theme.of(c).iconTheme.color,
+            ), // Use theme icon color
+            onPressed: () {
+              t.clear();
+              searchQ.value = '';
+              ctrl.clearFilter();
+              FocusScope.of(context).unfocus();
+            },
+          ),
           filled: true,
           // Use theme-aware fill color, fallback to surfaceVariant
           fillColor:
-              Theme.of(c).inputDecorationTheme.fillColor ?? surfaceVariantColor,
+          Theme.of(c).inputDecorationTheme.fillColor ?? surfaceVariantColor,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
@@ -247,7 +227,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
           _debounce?.cancel();
           _debounce = Timer(
             const Duration(milliseconds: 300),
-            () => searchQ.value = v,
+                () => searchQ.value = v,
           );
         },
       ),
@@ -317,13 +297,12 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
 
   // ───────────────────────── table & totals ──────────────────────────
 
-  Widget _paginatedTable(BuildContext context, List<AllAccounts_Model> txns) {
+  Widget _paginatedTable(BuildContext context, List<AllAccounts_Model> txns, double drTotal, double crTotal) {
     final totalRows = txns.length + 1; // +1 for summary row
     final rowsPer = totalRows < 10 ? totalRows : 10;
 
     // Get theme colors for the table
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    // final Color surfaceColor = Theme.of(context).colorScheme.surface;
     final Color surfaceVariantColor = Theme.of(
       context,
     ).colorScheme.surfaceVariant;
@@ -365,7 +344,7 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
           label: Text('Balance', style: TextStyle(color: onSurfaceColor)),
         ),
       ],
-      source: _LedgerSource(txns, context), // Pass context to _LedgerSource
+      source: _LedgerSource(txns, context, drTotal, crTotal), // Pass context and totals to _LedgerSource
     );
   }
 
@@ -378,62 +357,51 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
     // Get outline color for the border
     final Color outlineColor = Theme.of(context).colorScheme.outline;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: cardColor.withOpacity(
-              0.5,
-            ), // Use theme card color with opacity
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: outlineColor.withOpacity(
-                0.5,
-              ), // Add a semi-transparent border
-              width: 1.0,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: outlineColor.withOpacity(0.5),
+          width: 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _row('Dr Total', ctrl.drTotal.value, context), // Pass context
+          const SizedBox(height: 8),
+          _row('Cr Total', ctrl.crTotal.value, context), // Pass context
+          Divider(
+            color: Theme.of(context).colorScheme.outline,
+          ), // Theme-aware divider color
+          Row(
             children: [
-              _row('Dr Total', ctrl.drTotal.value, context), // Pass context
-              const SizedBox(height: 8),
-              _row('Cr Total', ctrl.crTotal.value, context), // Pass context
-              Divider(
-                color: Theme.of(context).colorScheme.outline,
-              ), // Theme-aware divider color
-              Row(
-                children: [
-                  Text(
-                    'Net Outstanding: ',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: onSurfaceColor,
-                    ),
-                  ), // Theme-aware text color
-                  Text(
-                    '₹${net.abs().toStringAsFixed(2)} ',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: net < 0 ? errorColor : primaryColor,
-                    ),
-                  ), // Theme-aware colors
-                  Text(
-                    net < 0 ? 'Cr' : 'Dr',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: net < 0 ? errorColor : primaryColor,
-                    ),
-                  ), // Theme-aware colors
-                ],
-              ),
+              Text(
+                'Net Outstanding: ',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: onSurfaceColor,
+                ),
+              ), // Theme-aware text color
+              Text(
+                '₹${net.abs().toStringAsFixed(2)} ',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: net < 0 ? errorColor : primaryColor,
+                ),
+              ), // Theme-aware colors
+              Text(
+                net < 0 ? 'Cr' : 'Dr',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: net < 0 ? errorColor : primaryColor,
+                ),
+              ), // Theme-aware colors
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -456,10 +424,9 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
 }
 
 // ───────────────── LedgerSource (sorted + Net Outstanding) ──────────────
-// ───────────────── LedgerSource (sorted + Net Outstanding) ──────────────
 class _LedgerSource extends DataTableSource {
-  // Modified constructor to accept BuildContext
-  _LedgerSource(this.txns, this.context) {
+  // Modified constructor to accept BuildContext and totals
+  _LedgerSource(this.txns, this.context, this.drTotal, this.crTotal) {
     // Corrected sorting logic to handle potential null dates
     txns.sort((a, b) {
       final dateA = a.transactionDate;
@@ -474,12 +441,14 @@ class _LedgerSource extends DataTableSource {
 
     netOutstanding = txns.fold<double>(
       0,
-      (p, t) => p + (t.isDr ? t.amount : -t.amount),
+          (p, t) => p + (t.isDr ? t.amount : -t.amount),
     );
   }
 
   final List<AllAccounts_Model> txns;
   final BuildContext context; // Store context to access theme
+  final double drTotal;
+  final double crTotal;
   late final double netOutstanding;
   double runningBal = 0;
 
@@ -516,8 +485,24 @@ class _LedgerSource extends DataTableSource {
             ),
           ), // Theme-aware text color
           const DataCell(Text('-')), // Invoice
-          const DataCell(Text('-')), // Debit
-          const DataCell(Text('-')), // Credit
+          DataCell(
+            Text(
+              drTotal.toStringAsFixed(2),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: onSurfaceColor,
+              ),
+            ),
+          ), // Total Debit
+          DataCell(
+            Text(
+              crTotal.toStringAsFixed(2),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: onSurfaceColor,
+              ),
+            ),
+          ), // Total Credit
           DataCell(
             Text(
               '₹${netOutstanding.abs().toStringAsFixed(2)} ${isCr ? 'Cr' : 'Dr'}',
@@ -560,9 +545,9 @@ class _LedgerSource extends DataTableSource {
               overflow: TextOverflow.ellipsis,
               style: t.narrations.toLowerCase() == 'opening balance'
                   ? TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: onSurfaceColor,
-                    ) // Theme-aware color
+                fontWeight: FontWeight.bold,
+                color: onSurfaceColor,
+              ) // Theme-aware color
                   : TextStyle(color: onSurfaceColor), // Theme-aware color
             ),
           ),

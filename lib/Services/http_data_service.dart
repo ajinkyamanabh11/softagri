@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'package:apidemo/Model/accountMaster_models.dart';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
@@ -173,7 +174,7 @@ class HttpDataServices extends GetxService {
 
           return dataList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
         } catch (e, stack) {
-          debugPrint('Error parsing cached data for $table: $e\n$stack');
+          log('Error parsing cached data for $table: $e\n$stack');
           await _storage.remove(cacheKey); // Corrupted cache, so remove it
         }
       }
@@ -228,7 +229,7 @@ class HttpDataServices extends GetxService {
                 return dynamicItem.toJson();
               }
             } catch (e) {
-              debugPrint('Failed to serialize item of type ${item.runtimeType}: $e');
+              log('Failed to serialize item of type ${item.runtimeType}: $e');
             }
             throw Exception('Unsupported type for caching: ${item.runtimeType}');
           }
@@ -240,7 +241,7 @@ class HttpDataServices extends GetxService {
       return response;
 
     } catch (e, stack) {
-      debugPrint('Error in fetchWithCache for $table: $e\n$stack');
+      log('Error in fetchWithCache for $table: $e\n$stack');
 
       // If API call fails, fall back to expired cache if it exists
       if (cachedData != null) {
@@ -267,7 +268,7 @@ class HttpDataServices extends GetxService {
           print('API call failed, falling back to cached data for $table');
           return dataList.map((e) => fromJson(e as Map<String, dynamic>)).toList();
         } catch (fallbackError, fallbackStack) {
-          debugPrint('Error falling back to cache: $fallbackError\n$fallbackStack');
+          log('Error falling back to cache: $fallbackError\n$fallbackStack');
           throw Exception('Failed to fetch data and cache is corrupted: $fallbackError');
         }
       }

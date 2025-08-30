@@ -1,4 +1,6 @@
 // auth_service.dart
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get/get_core/src/get_main.dart';
@@ -16,7 +18,7 @@ class AuthService {
       final canCheckBiometrics = await _localAuth.canCheckBiometrics;
       return isSupported || canCheckBiometrics;
     } catch (e) {
-      debugPrint('Error checking biometrics: $e');
+      log('Error checking biometrics: $e');
       return false;
     }
   }
@@ -38,7 +40,7 @@ class AuthService {
         ),
       );
     } catch (e) {
-      debugPrint('Authentication error: $e');
+      log('Authentication error: $e');
       return false;
     }
   }

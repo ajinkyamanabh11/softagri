@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -14,7 +16,6 @@ class SalesScreen extends StatefulWidget {
 }
 
 class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStateMixin {
-  //late ScrollController _verticalScrollController;
   final SalesController sc = Get.find<SalesController>();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController billCtrl = TextEditingController();
@@ -26,13 +27,12 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
   Animation<double>? _fadeAnimation;
   Animation<Offset>? _slideAnimation;
   late Worker _everWorker;
-  ScrollController? _verticalScrollController;
+
   @override
   void initState() {
     super.initState();
 
     _initAnimations();
-    _verticalScrollController = ScrollController();
     sc.fetchSales();
     // This is the correct way to link the worker to the widget's lifecycle
     _everWorker = ever(sc.isLoading, (isLoading) {
@@ -48,7 +48,6 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     billCtrl.dispose();
     _everWorker?.dispose(); // Use the safe-call operator
     _animationController?.dispose(); // Use the safe-call operator
-    _verticalScrollController?.dispose(); // Use the safe-call operator
     super.dispose();
   }
 
@@ -66,15 +65,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     ).animate(
       CurvedAnimation(parent: _animationController!, curve: Curves.easeOut),
     );
-    // Remove the `ever` listener from here
-    // ever(sc.isLoading, (isLoading) {
-    //   if (!isLoading && sc.error.value == null) {
-    //     _animationController?.forward(from: 0);
-    //   }
-    // });
   }
-
-
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -129,7 +120,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
 
       return paymentFiltered;
     } catch (e, stack) {
-      debugPrint('Error in filtering: $e\n$stack');
+      log('Error in filtering: $e\n$stack');
       return [];
     }
   }
@@ -156,67 +147,72 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
           ),),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Obx(() {
-          if (sc.isLoading.value) {
-            return Center(child: DotsWaveLoadingText(color: colorScheme.onSurface));
-          }
-          if (sc.error.value != null) {
-            return Center(
-              child: Text(
-                'Error: ${sc.error.value}',
-                style: TextStyle(color: colorScheme.error),
-              ),
-            );
-          }
+      body: Obx(() {
+        if (sc.isLoading.value) {
+          return Center(child: DotsWaveLoadingText(color: colorScheme.onSurface));
+        }
+        if (sc.error.value != null) {
+          return Center(
+            child: Text(
+              'Error: ${sc.error.value}',
+              style: TextStyle(color: colorScheme.error),
+            ),
+          );
+        }
 
-          final filteredData = _getFilteredAndSortedData();
-          final filteredByDate = sc.sales.where((entry) {
-            final entryDate = entry.entryDate ?? entry.invoiceDate;
-            return entryDate != null && DateUtils.isSameDay(entryDate, selectedDate);
-          }).toList();
+        final filteredData = _getFilteredAndSortedData();
+        final filteredByDate = sc.sales.where((entry) {
+          final entryDate = entry.entryDate ?? entry.invoiceDate;
+          return entryDate != null && DateUtils.isSameDay(entryDate, selectedDate);
+        }).toList();
 
-          final cashTotal = filteredByDate
-              .where((s) => s.paymentMode?.toLowerCase() == 'cash')
-              .fold(0.0, (sum, entry) => sum + entry.amount);
+        final cashTotal = filteredByDate
+            .where((s) => s.paymentMode?.toLowerCase() == 'cash')
+            .fold(0.0, (sum, entry) => sum + entry.amount);
 
-          final creditTotal = filteredByDate
-              .where((s) => s.paymentMode?.toLowerCase() == 'credit')
-              .fold(0.0, (sum, entry) => sum + entry.amount);
+        final creditTotal = filteredByDate
+            .where((s) => s.paymentMode?.toLowerCase() == 'credit')
+            .fold(0.0, (sum, entry) => sum + entry.amount);
 
-          final grandTotal = filteredByDate.fold(0.0, (sum, entry) => sum + entry.amount);
+        final grandTotal = filteredByDate.fold(0.0, (sum, entry) => sum + entry.amount);
 
-          return FadeTransition(
-            opacity: _fadeAnimation!,
-            child: SlideTransition(
-              position: _slideAnimation!,
+        return Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(12.0),
               child: Column(
                 children: [
                   _buildFilterRow(context),
                   const SizedBox(height: 12),
                   _buildPaymentTypeTabs(context, cashTotal, creditTotal),
                   const SizedBox(height: 12),
-                  Expanded(
-                    child: _buildSalesTable(filteredData),
-                  ),
-                  _buildGrandTotal(grandTotal),
+                  _buildSalesTable(filteredData),
+                  // Add spacer to account for the fixed grand total at the bottom
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.1),
                 ],
               ),
             ),
-          );
-        }),
-      ),
+
+            // Fixed Grand Total at the bottom
+            Positioned(
+              bottom: 10,
+              left: 0,
+              right: 0,
+              child: _buildGrandTotal(grandTotal),
+            ),
+          ],
+        );
+      }),
     );
   }
 
   Widget _buildFilterRow(BuildContext context) {
     return SingleChildScrollView(
-      primary: false, // <-- Add this line
-
+      scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          Expanded(
+          SizedBox(
+            width: 180,
             child: TextField(
               controller: nameCtrl,
               decoration: InputDecoration(
@@ -233,7 +229,8 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
+          SizedBox(
+            width: 120,
             child: TextField(
               controller: billCtrl,
               decoration: InputDecoration(
@@ -249,14 +246,13 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
               },
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
           Column(
             children: [
               IconButton(
                 icon: const Icon(Icons.calendar_today),
                 onPressed: () => _selectDate(context),
                 tooltip: 'Select Date',
-
               ),
               Text(DateFormat('dd-MMM-yy').format(selectedDate),style: TextStyle(fontSize: 11),),
             ],
@@ -270,13 +266,6 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
               _animationController?.forward(from: 0);
             },
           ),
-          // Obx(() => Text(
-          //   sc.cacheStatus.value,
-          //   style: TextStyle(
-          //     fontSize: 12,
-          //     color: sc.isCacheValid.value ? Colors.green : Colors.orange,
-          //   ),
-          // )),
         ],
       ),
     );
@@ -371,164 +360,154 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
       const double detailsWidth = 80;
       const double rowHeight = 48;
 
-      return Scrollbar(
-        thumbVisibility: true,
-        controller: _verticalScrollController,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          primary: false,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            controller: _verticalScrollController,
-            primary: false,
-            child: DataTable(
-              headingRowHeight: rowHeight,
-              dataRowMinHeight: rowHeight,
-              dataRowMaxHeight: rowHeight,
-              columnSpacing: 0,
-              horizontalMargin: 12,
-              columns: [
-                DataColumn(
-                  label: SizedBox(
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: rowHeight,
+          dataRowMinHeight: rowHeight,
+          dataRowMaxHeight: rowHeight,
+          columnSpacing: 0,
+          horizontalMargin: 12,
+          columns: [
+            DataColumn(
+              label: SizedBox(
+                width: srNoWidth,
+                child: const Text(
+                  'Sr.No',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            DataColumn(
+              label: SizedBox(
+                width: nameWidth,
+                child: const Text(
+                  'Name',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            DataColumn(
+              label: SizedBox(
+                width: billNoWidth,
+                child: const Text(
+                  'Bill No',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            DataColumn(
+              label: SizedBox(
+                width: dateWidth,
+                child: const Text(
+                  'Date',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            DataColumn(
+              label: SizedBox(
+                width: amountWidth,
+                child: const Text(
+                  'Amount',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              numeric: true,
+            ),
+            DataColumn(
+              label: SizedBox(
+                width: detailsWidth,
+                child: const Text(
+                  'Details',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+          rows: List<DataRow>.generate(data.length, (index) {
+            final entry = data[index];
+            return DataRow(
+              cells: [
+                DataCell(
+                  SizedBox(
                     width: srNoWidth,
-                    child: const Text(
-                      'Sr.No',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    height: rowHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('${index + 1}'),
                     ),
                   ),
                 ),
-                DataColumn(
-                  label: SizedBox(
+                DataCell(
+                  SizedBox(
                     width: nameWidth,
-                    child: const Text(
-                      'Name',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    height: rowHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        entry.accountName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ),
-                DataColumn(
-                  label: SizedBox(
+                DataCell(
+                  SizedBox(
                     width: billNoWidth,
-                    child: const Text(
-                      'Bill No',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    height: rowHeight,
+                    child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(entry.billNo)),
                   ),
                 ),
-                DataColumn(
-                  label: SizedBox(
+                DataCell(
+                  SizedBox(
                     width: dateWidth,
-                    child: const Text(
-                      'Date',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    height: rowHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        entry.entryDate != null
+                            ? DateFormat('dd-MMM-yy').format(entry.entryDate!)
+                            : '-',
+                      ),
                     ),
                   ),
                 ),
-                DataColumn(
-                  label: SizedBox(
+                DataCell(
+                  SizedBox(
                     width: amountWidth,
-                    child: const Text(
-                      'Amount',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    height: rowHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '₹${entry.amount.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-                  numeric: true,
                 ),
-                DataColumn(
-                  label: SizedBox(
+                DataCell(
+                  SizedBox(
                     width: detailsWidth,
-                    child: const Text(
-                      'Details',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    height: rowHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        icon: const Icon(Icons.info_outline, size: 20),
+                        onPressed: () => _showDetailsDialog(entry),
+                      ),
                     ),
                   ),
                 ),
               ],
-              rows: List<DataRow>.generate(data.length, (index) {
-                final entry = data[index];
-                return DataRow(
-                  cells: [
-                    DataCell(
-                      SizedBox(
-                        width: srNoWidth,
-                        height: rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text('${index + 1}'),
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      SizedBox(
-                        width: nameWidth,
-                        height: rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            entry.accountName,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      SizedBox(
-                        width: billNoWidth,
-                        height: rowHeight,
-                        child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(entry.billNo)),
-                      ),
-                    ),
-                    DataCell(
-                      SizedBox(
-                        width: dateWidth,
-                        height: rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            entry.entryDate != null
-                                ? DateFormat('dd-MMM-yy').format(entry.entryDate!)
-                                : '-',
-                          ),
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      SizedBox(
-                        width: amountWidth,
-                        height: rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '₹${entry.amount.toStringAsFixed(2)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      SizedBox(
-                        width: detailsWidth,
-                        height: rowHeight,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            icon: const Icon(Icons.info_outline, size: 20),
-                            onPressed: () => _showDetailsDialog(entry),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }),
-            ),
-          ),
+            );
+          }),
         ),
       );
     } catch (e, stack) {
-      debugPrint('Error building table: $e\n$stack');
+      log('Error building table: $e\n$stack');
       return Center(
         child: Text(
           'Error displaying data: $e',
@@ -538,25 +517,41 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     }
   }
 
-
   Widget _buildGrandTotal(double grandTotal) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Grand Total (${DateFormat('dd-MMM').format(selectedDate)})'),
+          Text(
+            'Grand Total (${DateFormat('dd-MMM').format(selectedDate)})',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0, end: grandTotal),
             duration: const Duration(milliseconds: 500),
             builder: (context, value, child) {
               return Text(
                 '₹${value.toStringAsFixed(2)}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 16,
+                ),
               );
             },
           ),

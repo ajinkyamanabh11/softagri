@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -129,7 +130,7 @@ class CustomerLedgerController extends GetxController {
       _calculateTotals();
     } catch (e, st) {
       error.value = e.toString();
-      debugPrint('Error loading data: $e\n$st');
+      log('Error loading data: $e\n$st');
     } finally {
       isLoading(false);
     }
@@ -177,7 +178,7 @@ class CustomerLedgerController extends GetxController {
       );
     } catch (e, st) {
       error.value = 'Refresh failed: ${e.toString()}';
-      debugPrint('Error during refresh: $e\n$st');
+      log('Error during refresh: $e\n$st');
       Get.snackbar(
           'Error',
           'Failed to refresh data',
@@ -202,9 +203,9 @@ class CustomerLedgerController extends GetxController {
     try {
       customerInfo.value = await _dataService.fetchCustomerInfo(forceRefresh: forceRefresh);
     } catch (e) {
-      debugPrint('Error loading customer info: $e');
+      log('Error loading customer info: $e');
       if (customerInfo.isNotEmpty) {
-        debugPrint('Using existing customer info data');
+        log('Using existing customer info data');
       } else {
         rethrow;
       }
@@ -215,9 +216,9 @@ class CustomerLedgerController extends GetxController {
     try {
       supplierInfo.value = await _dataService.fetchSupplierInfo(forceRefresh: forceRefresh);
     } catch (e) {
-      debugPrint('Error loading supplier info: $e');
+      log('Error loading supplier info: $e');
       if (supplierInfo.isNotEmpty) {
-        debugPrint('Using existing supplier info data');
+        log('Using existing supplier info data');
       } else {
         rethrow;
       }
@@ -248,7 +249,7 @@ class CustomerLedgerController extends GetxController {
       dataProcessingProgress.value = 1.0;
     } catch (e, st) {
       error.value = 'Error processing data: $e';
-      debugPrint('Error processing data: $e\n$st');
+      log('Error processing data: $e\n$st');
       rethrow;
     } finally {
       isProcessingData(false);

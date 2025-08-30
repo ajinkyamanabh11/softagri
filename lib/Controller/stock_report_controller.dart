@@ -93,7 +93,7 @@ class StockReportController extends GetxController {
 
     } catch (e, stack) {
       errorMessage.value = 'Refresh failed: ${e.toString()}';
-      debugPrint('Error during refresh: $e\n$stack');
+      log('Error during refresh: $e\n$stack');
       rethrow;
     } finally {
       isRefreshing.value = false;
@@ -133,7 +133,7 @@ class StockReportController extends GetxController {
       }
     } catch (e, st) {
       errorMessage.value = 'Failed to load stock data: ${e.toString()}';
-      debugPrint('Error loading stock data: $e\n$st');
+      log('Error loading stock data: $e\n$st');
 
       // Try to load from cache using HttpDataServices
       try {
@@ -142,7 +142,7 @@ class StockReportController extends GetxController {
         final allItemDetail = await Get.find<HttpDataServices>().fetchItemDetail(forceRefresh: false);
         await _processAllData(allItemDetail, allItemMaster);
       } catch (cacheError) {
-        debugPrint('Cache load error: $cacheError');
+        log('Cache load error: $cacheError');
         throw Exception('Both API and cache failed: $cacheError');
       }
     } finally {

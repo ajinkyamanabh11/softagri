@@ -1,18 +1,16 @@
 // lib/screens/profit_screen.dart
 
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
- // Import fl_chart
 import 'dart:math';
 
 import '../Controller/profit_report_controller.dart';
 import '../widgets/animated_Dots_LoadingText.dart';
 import '../widgets/cache_status_indicator.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/rounded_search_field.dart'; // For random colors
+import '../widgets/rounded_search_field.dart';
 
 class ProfitReportScreen extends StatefulWidget {
   const ProfitReportScreen({super.key});
@@ -33,7 +31,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
     super.initState();
     fromDate = DateUtils.dateOnly(DateTime.now());
     toDate = DateUtils.dateOnly(DateTime.now());
-    // 🟢 UNCOMMENTED: Trigger the initial load when the screen is initialized.
     prc.loadProfitReport(startDate: fromDate, endDate: toDate);
   }
 
@@ -46,7 +43,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Access theme colors for consistency
     final Color primaryColor = Theme.of(context).primaryColor;
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
 
@@ -54,59 +50,94 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
       appBar: const CustomAppBar(title: Text('Profit Report')),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: _buildDateRangeRow(),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _buildSearchField(),
-          ),
-          const CacheStatusIndicator(status: '',),
-          const SizedBox(height: 10),
+          // Fixed header section with app bar only
+          // Content section (scrollable from date range to pie chart)
           Expanded(
             child: Obx(() {
               if (prc.isLoading.value) {
                 return Center(child: DotsWaveLoadingText(
-                  color: onSurfaceColor, // Use theme color for loading dots
+                  color: onSurfaceColor,
                 ));
               }
 
-              // 🟢 MODIFIED: Use the reactive filteredRows from the controller
               final filteredRows = prc.filteredRows;
 
               if (filteredRows.isEmpty) {
                 final range = fromDate == toDate
                     ? DateFormat.yMMMd().format(fromDate)
                     : '${DateFormat.yMMMd().format(fromDate)} to ${DateFormat.yMMMd().format(toDate)}';
-                return Center(child: Text('No data available for $range', style: TextStyle(color: onSurfaceColor)));
+                return Column(
+                  children: [
+                    // Date range and search (now part of scrollable content)
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: _buildDateRangeRow(),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: _buildSearchField(),
+                    ),
+                    const CacheStatusIndicator(status: ''),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: Center(
+                        child: Text('No data available for $range',
+                            style: TextStyle(color: onSurfaceColor)),
+                      ),
+                    ),
+                  ],
+                );
               }
 
-              return RefreshIndicator(
-                onRefresh: () async {
-                  await prc.loadProfitReport(startDate: fromDate, endDate: toDate);
-                },
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    children: [
-                      _buildTableWithTotals(filteredRows, context),
-                      const SizedBox(height: 20),
-                      _buildProfitPieChart(filteredRows, context),
-                      const SizedBox(height: 20),
-                    ],
+              return Column(
+                children: [
+                  // Scrollable content from date range to pie chart
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: () async {
+                        await prc.loadProfitReport(startDate: fromDate, endDate: toDate);
+                      },
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: Column(
+                          children: [
+                            // Date range and search (now part of scrollable content)
+                            Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: _buildDateRangeRow(),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: _buildSearchField(),
+                            ),
+                            const CacheStatusIndicator(status: ''),
+                            const SizedBox(height: 10),
+
+                            // Table with its own scrolling
+                            _buildTableWithTotals(filteredRows, context),
+                            const SizedBox(height: 20),
+
+                            // Pie chart
+                            _buildProfitPieChart(filteredRows, context),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+
+                  // Fixed totals card at the bottom
+                  Obx(() => prc.batchProfits.isNotEmpty ? _buildTotalsCard(context) : const SizedBox.shrink()),
+                ],
               );
             }),
           ),
-
-          Obx(() => prc.batchProfits.isNotEmpty ? _buildTotalsCard(context) : const SizedBox.shrink()),
         ],
       ),
     );
   }
 
+  // ... (rest of your methods remain unchanged)
   Widget _buildDateRangeRow() {
     return Row(
       children: [
@@ -173,51 +204,28 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
       text: "Search By Item Name or Bill no..",
       onClear: () {
         searchController.clear();
-        prc.searchQuery.value = ''; // Update the RxString in controller
+        prc.searchQuery.value = '';
       },
       onChanged: (value) {
-        prc.searchQuery.value = value; // Update the RxString in controller
-        // No need for setState(() {}); here as Obx observes prc.filteredRows which uses searchQuery
+        prc.searchQuery.value = value;
       }, hintText: '',
     );
   }
 
-  // 🔴 REMOVED: This method is now redundant as prc.filteredRows handles filtering
-  // List<Map<String, dynamic>> _getFilteredRows() {
-  //   final search = searchController.text.toLowerCase();
-  //   return prc.batchProfits.where((row) {
-  //     final item = (row['itemName'] ?? '').toString().toLowerCase();
-  //     final bill = (row['billno'] ?? '').toString().toLowerCase();
-  //     return item.contains(search) || bill.contains(search);
-  //   }).toList();
-  // }
-
-  // lib/screens/profit_screen.dart
-
-// ... (inside _ProfitReportScreenState class)
-
   Widget _buildTableWithTotals(List<Map<String, dynamic>> rows, BuildContext context) {
-    // 🔴 IMPORTANT: This method now receives the ALREADY FILTERED rows
-    // from the Obx in the build method. So, `rows` here IS `prc.filteredRows`.
-
     final sortedRows = List<Map<String, dynamic>>.from(rows)
       ..sort((a, b) => a['billno'].toString().compareTo(b['billno'].toString()));
 
-    // Ensure rowsPer is at least 1 if there's data, to prevent errors for small datasets
     final rowsPer = sortedRows.isEmpty ? 1 : (sortedRows.length < 10 ? sortedRows.length : 10);
-
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: PaginatedDataTable(
-        // Add a Key to force rebuild when data changes significantly
-        // This is a good practice for widgets that don't inherently react to data changes
-        key: ValueKey(sortedRows.hashCode), // Forces rebuild if list content changes
-        // (simple hashCode for demonstration, more robust keys possible)
+        key: ValueKey(sortedRows.hashCode),
         headingRowColor: MaterialStateProperty.all(Theme.of(context).colorScheme.surfaceVariant),
         columnSpacing: 24,
         rowsPerPage: rowsPer,
-        availableRowsPerPage: sortedRows.length < 10 && sortedRows.isNotEmpty ? [rowsPer] : [10, 25, 50, 100, sortedRows.length], // Show all data option // Provide more options if data grows
+        availableRowsPerPage: sortedRows.length < 10 && sortedRows.isNotEmpty ? [rowsPer] : [10, 25, 50, 100, sortedRows.length],
         showFirstLastButtons: true,
         columns: [
           DataColumn(label: Text('Sr.', style: Theme.of(context).textTheme.titleSmall)),
@@ -231,9 +239,6 @@ class _ProfitReportScreenState extends State<ProfitReportScreen> {
           DataColumn(label: Text('Purchase Amt.', style: Theme.of(context).textTheme.titleSmall)),
           DataColumn(label: Text('Profit', style: Theme.of(context).textTheme.titleSmall)),
         ],
-        // 🔴 CRITICAL CHANGE: Instantiate _ProfitSource directly within the Obx
-        // (which calls _buildTableWithTotals). This ensures a new source is created
-        // whenever prc.filteredRows updates.
         source: _ProfitSource(sortedRows, context),
       ),
     );

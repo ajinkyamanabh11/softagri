@@ -30,6 +30,13 @@ class _StockScreenState extends State<StockScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    searchController.dispose();
+    searchFocusNode.dispose();
+    super.dispose();
+  }
+
   Future<void> _initializeData() async {
     try {
       await stockReportController.loadStockReport();
@@ -64,7 +71,7 @@ class _StockScreenState extends State<StockScreen> {
                     color: Colors.white,
                   ),
                 )
-                    : Icon(Icons.refresh, color: Colors.white),
+                    : const Icon(Icons.refresh, color: Colors.white),
               ),
               onPressed: stockReportController.isLoading.value
                   ? null
@@ -74,16 +81,72 @@ class _StockScreenState extends State<StockScreen> {
             )),
           ],
         ),
-        body: Column(
-          children: [
-            // Refresh indicator
-            Obx(() {
-              if (stockReportController.isRefreshing.value) {
-                return const LinearProgressIndicator();
-              }
-              return const SizedBox.shrink();
-            }),
+        body: _buildBody(context, onSurfaceColor),
+      ),
+    );
+  }
 
+  Widget _buildBody(BuildContext context, Color onSurfaceColor) {
+    return Obx(() {
+      if (stockReportController.isRefreshing.value) {
+        return Column(
+          children: [
+            const LinearProgressIndicator(),
+            Expanded(
+              child: _ContentBody(
+                controller: stockReportController,
+                searchController: searchController,
+                searchFocusNode: searchFocusNode,
+              ),
+            ),
+          ],
+        );
+      }
+
+      return _initialLoadCompleted
+          ? _ContentBody(
+        controller: stockReportController,
+        searchController: searchController,
+        searchFocusNode: searchFocusNode,
+      )
+          : Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(
+              'Initializing stock data...',
+              style: TextStyle(color: onSurfaceColor),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+class _ContentBody extends StatelessWidget {
+  final StockReportController controller;
+  final TextEditingController searchController;
+  final FocusNode searchFocusNode;
+
+  const _ContentBody({
+    required this.controller,
+    required this.searchController,
+    required this.searchFocusNode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await controller.refreshData();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: RoundedSearchField(
@@ -92,7 +155,7 @@ class _StockScreenState extends State<StockScreen> {
                 text: "Search By Item Code or Item Name...",
                 onClear: () {
                   searchController.clear();
-                  stockReportController.searchQuery.value = '';
+                  controller.searchQuery.value = '';
                   searchFocusNode.unfocus();
                 },
                 hintText: '',
@@ -100,181 +163,124 @@ class _StockScreenState extends State<StockScreen> {
             ),
 
             // Last updated indicator
-            _buildLastUpdatedIndicator(),
+            _buildLastUpdatedIndicator(context, controller),
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-              child: _buildSortOptions(context),
+              child: _buildSortOptions(context, controller),
             ),
             const SizedBox(height: 10),
-            Expanded(
-              child: _initialLoadCompleted
-                  ? _buildContent()
-                  : Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Initializing stock data...',
-                      style: TextStyle(color: onSurfaceColor),
+
+            Obx(() {
+              if (controller.isLoading.value) {
+                return Center(
+                  child: DotsWaveLoadingText(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                );
+              }
+
+              if (controller.errorMessage.value != null) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 40),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Error: ${controller.errorMessage.value}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red, fontSize: 16),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () async {
+                            await controller.refreshData();
+                          },
+                          child: const Text('Retry'),
+                        ),
+                      ],
                     ),
+                  ),
+                );
+              }
+
+              if (controller.totalItems.value == 0) {
+                return const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey),
+                      SizedBox(height: 10),
+                      Text(
+                        'No items with stock found or matching search.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return Container(
+                height: MediaQuery.of(context).size.height * 0.6,
+                padding: const EdgeInsets.all(8.0),
+                child: CustomPaginatedTable(
+                  data: controller.currentPageData,
+                  columnHeaders: const [
+                    'Sr.', 'Item Code', 'Item Name', 'Batch No',
+                    'Package', 'Current Stock', 'Type',
                   ],
+                  columnKeys: const [
+                    'Sr.No.', 'Item Code', 'Item Name', 'Batch No',
+                    'Package', 'Current Stock', 'Type',
+                  ],
+                  currentPage: controller.currentpage.value,
+                  totalPages: controller.totalPages.value,
+                  totalItems: controller.totalItems.value,
+                  itemsPerPage: controller.itemPerPage.value,
+                  availableItemsPerPage: controller.availableItemsPerPage,
+                  paginationInfo: controller.getPaginationInfo(),
+                  hasNextPage: controller.hasNextpage,
+                  hasPreviousPage: controller.hasPreviousPage,
+                  isLoading: controller.isLoadingPage.value,
+                  onNextPage: controller.nextPage,
+                  onPreviousPage: controller.previousPage,
+                  onGoToPage: controller.goToPage,
+                  onItemsPerPageChanged: controller.setItemsPerPage,
                 ),
-              ),
-            ),
+              );
+            }),
+
             Obx(() => Visibility(
-              visible: _initialLoadCompleted &&
-                  !stockReportController.isLoading.value &&
-                  stockReportController.errorMessage.value == null &&
-                  stockReportController.totalItems.value > 0,
-              child: _buildTotalStockCard(context),
+              visible: !controller.isLoading.value &&
+                  controller.errorMessage.value == null &&
+                  controller.totalItems.value > 0,
+              child: _buildTotalStockCard(context, controller),
             )),
+            const SizedBox(height: 20),
           ],
         ),
-
-        // Debug button (optional - remove in production)
-        // floatingActionButton: Column(
-        //   mainAxisAlignment: MainAxisAlignment.end,
-        //   children: [
-        //     FloatingActionButton(
-        //       onPressed: () {
-        //         print('=== DEBUG INFO ===');
-        //         print('Total processed items: ${stockReportController.allProcessedData.length}');
-        //         print('Current page data: ${stockReportController.currentPageData.length}');
-        //         print('Last updated: ${stockReportController.lastUpdated.value}');
-        //         print('Is loading: ${stockReportController.isLoading.value}');
-        //         print('Is refreshing: ${stockReportController.isRefreshing.value}');
-        //
-        //         // Check cache status
-        //         final httpService = Get.find<HttpDataServices>();
-        //         print('ItemMaster cache status: ${httpService.getCacheStatus('itemMaster')}');
-        //         print('ItemDetail cache status: ${httpService.getCacheStatus('itemDetail')}');
-        //         print('Is online: ${httpService.isOnline.value}');
-        //       },
-        //       child: const Icon(Icons.info),
-        //       mini: true,
-        //     ),
-        //     SizedBox(height: 8),
-        //     FloatingActionButton(
-        //       onPressed: () async {
-        //         await Get.find<HttpDataServices>().clearCache();
-        //         Get.snackbar('Cache Cleared', 'All cached data has been cleared');
-        //       },
-        //       child: const Icon(Icons.clear_all),
-        //       mini: true,
-        //     ),
-        //   ],
-        // ),
       ),
     );
   }
 
-  Widget _buildContent() {
-    return Obx(() {
-      if (stockReportController.isLoading.value) {
-        return Center(
-          child: DotsWaveLoadingText(
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        );
-      }
-
-      if (stockReportController.errorMessage.value != null) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 40),
-                const SizedBox(height: 10),
-                Text(
-                  'Error: ${stockReportController.errorMessage.value}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 16),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () async {
-                    await stockReportController.refreshData();
-                  },
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      if (stockReportController.totalItems.value == 0) {
-        return const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.inventory_2_outlined, size: 50, color: Colors.grey),
-              SizedBox(height: 10),
-              Text(
-                'No items with stock found or matching search.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-        );
-      }
-
-      return RefreshIndicator(
-        onRefresh: () async {
-          await stockReportController.refreshData();
-          // Force UI update
-          setState(() {});
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: CustomPaginatedTable(
-            data: stockReportController.currentPageData,
-            columnHeaders: const [
-              'Sr.', 'Item Code', 'Item Name', 'Batch No',
-              'Package', 'Current Stock', 'Type',
-            ],
-            columnKeys: const [
-              'Sr.No.', 'Item Code', 'Item Name', 'Batch No',
-              'Package', 'Current Stock', 'Type',
-            ],
-            currentPage: stockReportController.currentpage.value,
-            totalPages: stockReportController.totalPages.value,
-            totalItems: stockReportController.totalItems.value,
-            itemsPerPage: stockReportController.itemPerPage.value,
-            availableItemsPerPage: stockReportController.availableItemsPerPage,
-            paginationInfo: stockReportController.getPaginationInfo(),
-            hasNextPage: stockReportController.hasNextpage,
-            hasPreviousPage: stockReportController.hasPreviousPage,
-            isLoading: stockReportController.isLoadingPage.value,
-            onNextPage: stockReportController.nextPage,
-            onPreviousPage: stockReportController.previousPage,
-            onGoToPage: stockReportController.goToPage,
-            onItemsPerPageChanged: stockReportController.setItemsPerPage,
-          ),
-        ),
-      );
-    });
-  }
-
-  Widget _buildSortOptions(BuildContext context) {
+  Widget _buildSortOptions(BuildContext context, StockReportController controller) {
     final theme = Theme.of(context);
+
     return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         ChoiceChip(
           label: const Text('Item Name'),
-          selected: stockReportController.sortByColumn.value == 'Item Name',
+          selected: controller.sortByColumn.value == 'Item Name',
           onSelected: (selected) => selected
-              ? stockReportController.setSortColumn('Item Name')
-              : stockReportController.toggleSortOrder(),
+              ? controller.setSortColumn('Item Name')
+              : controller.toggleSortOrder(),
           selectedColor: theme.primaryColor,
           labelStyle: TextStyle(
-            color: stockReportController.sortByColumn.value == 'Item Name'
+            color: controller.sortByColumn.value == 'Item Name'
                 ? theme.colorScheme.onPrimary
                 : theme.colorScheme.onSurface,
           ),
@@ -283,13 +289,13 @@ class _StockScreenState extends State<StockScreen> {
         const SizedBox(width: 8),
         ChoiceChip(
           label: const Text('Current Stock'),
-          selected: stockReportController.sortByColumn.value == 'Current Stock',
+          selected: controller.sortByColumn.value == 'Current Stock',
           onSelected: (selected) => selected
-              ? stockReportController.setSortColumn('Current Stock')
-              : stockReportController.toggleSortOrder(),
+              ? controller.setSortColumn('Current Stock')
+              : controller.toggleSortOrder(),
           selectedColor: theme.primaryColor,
           labelStyle: TextStyle(
-            color: stockReportController.sortByColumn.value == 'Current Stock'
+            color: controller.sortByColumn.value == 'Current Stock'
                 ? theme.colorScheme.onPrimary
                 : theme.colorScheme.onSurface,
           ),
@@ -298,31 +304,29 @@ class _StockScreenState extends State<StockScreen> {
         const SizedBox(width: 8),
         IconButton(
           icon: Icon(
-            stockReportController.sortAscending.value
+            controller.sortAscending.value
                 ? Icons.arrow_upward
                 : Icons.arrow_downward,
             color: theme.primaryColor,
           ),
-          onPressed: () => stockReportController.toggleSortOrder(),
+          onPressed: () => controller.toggleSortOrder(),
         ),
       ],
     ));
   }
 
-  Widget _buildTotalStockCard(BuildContext context) {
+  Widget _buildTotalStockCard(BuildContext context, StockReportController controller) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).primaryColor,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-        ),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
             blurRadius: 5,
-            offset: const Offset(0, -3),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -338,7 +342,7 @@ class _StockScreenState extends State<StockScreen> {
             ),
           ),
           Text(
-            NumberFormat('#,##0.##').format(stockReportController.totalCurrentStock.value),
+            NumberFormat('#,##0.##').format(controller.totalCurrentStock.value),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -350,14 +354,14 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
-  Widget _buildLastUpdatedIndicator() {
+  Widget _buildLastUpdatedIndicator(BuildContext context, StockReportController controller) {
     return Obx(() {
-      if (stockReportController.lastUpdated.value == null) return const SizedBox();
+      if (controller.lastUpdated.value == null) return const SizedBox();
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
         child: Text(
-          'Last updated: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(stockReportController.lastUpdated.value!)}',
+          'Last updated: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(controller.lastUpdated.value!)}',
           style: TextStyle(
             fontSize: 12,
             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),

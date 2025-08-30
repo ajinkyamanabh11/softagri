@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../Model/item_master.dart';
@@ -55,7 +57,7 @@ class SalesController extends GetxController with BaseRemoteController {
   }
 
   Future<void> fetchSales({bool forceRefresh = false}) async {
-    debugPrint('Fetching sales data for subfolder: ${httpService.subfolderRx}');
+    log('Fetching sales data for subfolder: ${httpService.subfolderRx}');
     return guard(() async {
       await _loadAllData(forceRefresh);
       _processCombinedSalesData();

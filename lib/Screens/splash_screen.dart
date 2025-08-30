@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -50,7 +51,7 @@ class _SplashScreenState extends State<SplashScreen> {
         Get.offAll(() => const LoginPage());
       }
     } catch (e) {
-      debugPrint('Splash initialization error: $e');
+      log('Splash initialization error: $e');
       Get.offAll(() => const LoginPage());
     }
   }

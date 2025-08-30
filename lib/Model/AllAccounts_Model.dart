@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -92,7 +93,7 @@ class AllAccounts_Model {
         return _parseRfc1123(dateString.toString());
       }
     } catch (e) {
-      debugPrint('Error parsing date $dateString: $e');
+      log('Error parsing date $dateString: $e');
       return null;
     }
   }
@@ -118,7 +119,7 @@ class AllAccounts_Model {
 
       return DateTime(year, month, day, hour, minute, second);
     } catch (e) {
-      debugPrint('Error parsing RFC1123 date $dateString: $e');
+      log('Error parsing RFC1123 date $dateString: $e');
       return null;
     }
   }

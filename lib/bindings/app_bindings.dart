@@ -26,5 +26,6 @@ class AppBindings implements Bindings {
     Get.lazyPut(() => SalesController(), fenix: true);
     Get.lazyPut(() => StockReportController(), fenix: true);
     Get.lazyPut(() => ProfitReportController(), fenix: true);
+
   }
 }

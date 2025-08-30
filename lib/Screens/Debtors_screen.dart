@@ -122,90 +122,94 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
             ),
           );
         }
+
         // Use the filtered and sorted list here
         final filteredAndSortedDebtors = _getFilteredDebtors();
         if (filteredAndSortedDebtors.isEmpty) {
           return _buildEmptyState(context);
         }
+
         return Stack(
           children: [
-            Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                  child: TextField(
-                    controller: searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search by name',
-                      prefixIcon: Icon(Icons.search, color: primaryColor),
-                      suffixIcon: searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                        icon: Icon(Icons.clear, color: theme.iconTheme.color),
-                        onPressed: () {
-                          searchCtrl.clear();
-                          searchQ.value = '';
-                        },
+            RefreshIndicator(
+              onRefresh: () => ctrl.refreshData(),
+              color: primaryColor,
+              child: SingleChildScrollView(
+                controller: listCtrl,
+                padding: const EdgeInsets.only(bottom: 80), // Space for totals container
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: TextField(
+                        controller: searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Search by name',
+                          prefixIcon: Icon(Icons.search, color: primaryColor),
+                          suffixIcon: searchCtrl.text.isEmpty
+                              ? null
+                              : IconButton(
+                            icon: Icon(Icons.clear, color: theme.iconTheme.color),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              searchQ.value = '';
+                            },
+                          ),
+                          filled: true,
+                          fillColor: theme.colorScheme.surfaceVariant,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(30),
+                            borderSide: BorderSide.none,
+                          ),
+                          hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)),
+                        ),
+                        style: TextStyle(color: onSurfaceColor),
+                        onChanged: (v) => searchQ.value = v,
                       ),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceVariant,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                      hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)),
                     ),
-                    style: TextStyle(color: onSurfaceColor),
-                    onChanged: (v) => searchQ.value = v,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      _chip('All', context),
-                      _chip('Customer', context),
-                      _chip('Supplier', context),
-                    ],
-                  ),
-                ),
-                Obx(() {
-                  if (ctrl.isProcessingData.value) {
-                    return _buildProcessingIndicator(ctrl.dataProcessingProgress.value, context);
-                  }
-                  return const SizedBox.shrink();
-                }),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => ctrl.refreshData(),
-                    color: primaryColor,
-                    child: ListView.builder(
-                      controller: listCtrl,
-                      padding: EdgeInsets.fromLTRB(12, 8, 12, showFab.value ? 90 : 70),
-                      // Use the new local variable here
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          _chip('All', context),
+                          _chip('Customer', context),
+                          _chip('Supplier', context),
+                        ],
+                      ),
+                    ),
+                    Obx(() {
+                      if (ctrl.isProcessingData.value) {
+                        return _buildProcessingIndicator(ctrl.dataProcessingProgress.value, context);
+                      }
+                      return const SizedBox.shrink();
+                    }),
+
+                    // List items
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
                       itemCount: filteredAndSortedDebtors.length + (ctrl.hasMoreDebtors.value ? 1 : 0),
                       itemBuilder: (_, i) {
                         if (i == filteredAndSortedDebtors.length) {
                           return _buildLoadingMoreIndicator();
                         }
-                        // Use the new local variable here
                         return _debtorTile(filteredAndSortedDebtors[i], context);
                       },
                     ),
-                  ),
+                    const SizedBox(height: 20), // Extra space at bottom
+                  ],
                 ),
-              ],
+              ),
             ),
-            Obx(() => AnimatedPositioned(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-              bottom: showFab.value ? 76.0 : 12.0,
+
+            // Totals section (positioned at bottom)
+            Positioned(
+              bottom: 12,
               left: 0,
               right: 0,
-              // Pass the sorted list to the totals widget
               child: _totals(filteredAndSortedDebtors, context),
-            )),
+            ),
           ],
         );
       }),
@@ -350,7 +354,7 @@ class _DebtorsScreenState extends State<DebtorsScreen> {
     final balanceColor = bal >= 0 ? theme.primaryColor : theme.colorScheme.error;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4,horizontal: 4),
       child: Material(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),

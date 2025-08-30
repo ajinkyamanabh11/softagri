@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:apidemo/utils/preference_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -12,28 +13,19 @@ import 'package:apidemo/routes/routes.dart';
 import 'package:apidemo/utils/themes.dart';
 
 Future<void> main() async {
-  // 1. First initialize Flutter bindings in the root zone
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Make zone errors non-fatal in production (keep true for development)
-  BindingBase.debugZoneErrorsAreFatal = false;
+  // Initialize storage and preferences
+  await GetStorage.init();
+  await PreferenceManager.init();
 
-  // 3. Run everything in the same zone
-  runZonedGuarded(() async {
-    // Initialize storage and preferences
-    await GetStorage.init();
-    await PreferenceManager.init();
+  // Initialize theme controller
+  Get.put(ThemeController(), permanent: true);
 
-    // Initialize theme controller
-    Get.put(ThemeController(), permanent: true);
+  // Determine initial route
+  final initialRoute = await _determineInitialRoute();
 
-    // Run the app
-    runApp(MyApp(initialRoute: await _determineInitialRoute()));
-  }, (error, stack) {
-    // Handle any errors that occur in the zone
-    debugPrint('Application error: $error\n$stack');
-    // Consider adding crash reporting here
-  });
+  runApp(MyApp(initialRoute: initialRoute));
 }
 
 Future<String> _determineInitialRoute() async {

@@ -1,4 +1,6 @@
 // sales_invoice_master.dart
+import 'dart:developer';
+
 import 'package:apidemo/utils/dateparsing.dart';
 import 'package:flutter/material.dart';
 
@@ -52,7 +54,7 @@ class SalesInvoiceMaster {
         return parseRfc1123(dateString.toString());
       }
     } catch (e) {
-      debugPrint('Error parsing date $dateString: $e');
+      log('Error parsing date $dateString: $e');
       return null;
     }
   }

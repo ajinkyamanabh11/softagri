@@ -99,119 +99,118 @@ class _CreditorsScreenState extends State<CreditorsScreen> {
         child: Icon(Icons.arrow_upward, color: onPrimaryColor),
       )
           : const SizedBox.shrink()),
-      body: Obx(() {
-        if (ctrl.isLoading.value && ctrl.creditors.isEmpty) {
-          return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
-        }
+        body: Obx(() {
+          if (ctrl.isLoading.value && ctrl.creditors.isEmpty) {
+            return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
+          }
 
-        if (ctrl.error.value != null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '❌  ${ctrl.error.value!}',
-                  style: TextStyle(color: theme.colorScheme.error),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => ctrl.loadData(),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          );
-        }
+          if (ctrl.error.value != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '❌  ${ctrl.error.value!}',
+                    style: TextStyle(color: theme.colorScheme.error),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => ctrl.loadData(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
 
-        // Use the filtered and sorted list here
-        final filteredAndSortedCreditors = _getFilteredCreditors();
+          // Use the filtered and sorted list here
+          final filteredAndSortedCreditors = _getFilteredCreditors();
 
-        if (filteredAndSortedCreditors.isEmpty) {
-          return _buildEmptyState(context);
-        }
+          if (filteredAndSortedCreditors.isEmpty) {
+            return _buildEmptyState(context);
+          }
 
-        return Stack(
-          children: [
-            Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                  child: TextField(
-                    controller: searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search by name',
-                      prefixIcon: Icon(Icons.search, color: primaryColor),
-                      suffixIcon: searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                        icon: Icon(Icons.clear, color: theme.iconTheme.color),
-                        onPressed: () {
-                          searchCtrl.clear();
-                          searchQ.value = '';
+          return Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () => ctrl.refreshData(),
+                color: primaryColor,
+                child: SingleChildScrollView(
+                  controller: listCtrl,
+                  padding: const EdgeInsets.only(bottom: 80), // Space for totals container
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                        child: TextField(
+                          controller: searchCtrl,
+                          decoration: InputDecoration(
+                            hintText: 'Search by name',
+                            prefixIcon: Icon(Icons.search, color: primaryColor),
+                            suffixIcon: searchCtrl.text.isEmpty
+                                ? null
+                                : IconButton(
+                              icon: Icon(Icons.clear, color: theme.iconTheme.color),
+                              onPressed: () {
+                                searchCtrl.clear();
+                                searchQ.value = '';
+                              },
+                            ),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceVariant,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: BorderSide.none,
+                            ),
+                            hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)),
+                          ),
+                          style: TextStyle(color: onSurfaceColor),
+                          onChanged: (v) => searchQ.value = v,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                        child: Wrap(
+                          spacing: 8,
+                          children: [
+                            _chip('All', context),
+                            _chip('Customer', context),
+                            _chip('Supplier', context),
+                          ],
+                        ),
+                      ),
+                      if (ctrl.isProcessingData.value)
+                        _buildProcessingIndicator(ctrl.dataProcessingProgress.value, context),
+
+                      // List items
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredAndSortedCreditors.length + (ctrl.hasMoreCreditors.value ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (i == filteredAndSortedCreditors.length) {
+                            return _buildLoadingMoreIndicator();
+                          }
+                          return _creditorTile(filteredAndSortedCreditors[i], context);
                         },
                       ),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceVariant,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                      hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.6)),
-                    ),
-                    style: TextStyle(color: onSurfaceColor),
-                    onChanged: (v) => searchQ.value = v,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      _chip('All', context),
-                      _chip('Customer', context),
-                      _chip('Supplier', context),
+                      const SizedBox(height: 20), // Extra space at bottom
                     ],
                   ),
                 ),
-                if (ctrl.isProcessingData.value)
-                  _buildProcessingIndicator(ctrl.dataProcessingProgress.value, context),
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => ctrl.refreshData(),
-                    color: primaryColor,
-                    child: ListView.builder(
-                      controller: listCtrl,
-                      // Adjusted padding to ensure the last items are visible above the totals container
-                      padding: EdgeInsets.fromLTRB(12, 8, 12, showFab.value ? 90 : 70),
-                      // Use the new local variable here
-                      itemCount: filteredAndSortedCreditors.length + (ctrl.hasMoreCreditors.value ? 1 : 0),
-                      itemBuilder: (_, i) {
-                        if (i == filteredAndSortedCreditors.length) {
-                          return _buildLoadingMoreIndicator();
-                        }
-                        // Use the new local variable here
-                        return _creditorTile(filteredAndSortedCreditors[i], context);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Obx(() => AnimatedPositioned(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-              // Position the totals container based on whether the FAB is visible.
-              // We've moved it up a bit to avoid overlap.
-              bottom: showFab.value ? 80.0 : 12.0,
-              left: 0,
-              right: 0,
-              // Pass the sorted list to the totals widget
-              child: _totals(filteredAndSortedCreditors, context),
-            )),
-          ],
-        );
-      }),
+              ),
+
+              // Totals section (positioned at bottom)
+              Positioned(
+                bottom: 12,
+                left: 0,
+                right: 0,
+                child: _totals(filteredAndSortedCreditors, context),
+              ),
+            ],
+          );
+        }),
     );
   }
 
@@ -344,7 +343,7 @@ class _CreditorsScreenState extends State<CreditorsScreen> {
     final balanceColor = bal <= 0 ? theme.primaryColor : theme.colorScheme.error;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4,horizontal: 4),
       child: Material(
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
