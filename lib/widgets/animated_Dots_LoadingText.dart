@@ -57,19 +57,19 @@ class _DotsWaveLoadingTextState extends State<DotsWaveLoadingText>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text(
-          'Fetching Data ',
+        Text(
+          '${widget.text} ', // Use the text parameter
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
         const SizedBox(width: 6),
         _buildDot(0.0),
         _buildDot(0.5),
         _buildDot(1.0),
-
       ],
     );
   }
 }
+
 class ProgressLoadingWidget extends StatelessWidget {
   final double progress;
   final String message;

@@ -126,14 +126,6 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
                     color: onSurfaceColor,
                     text: 'Converting To PDF',
                   ),
-                  SizedBox(height: 20),
-                  Text(
-                    'Converting To PDF...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: onSurfaceColor,
-                    ),
-                  ),
                 ],
               ),
             );

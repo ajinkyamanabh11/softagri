@@ -148,6 +148,21 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
         ],
       ),
       body: Obx(() {
+        if (sc.isGeneratingBill.value) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                DotsWaveLoadingText(
+                  color: colorScheme.onSurface,
+                  text: 'Generating Bill',
+                ),
+
+
+              ],
+            ),
+          );
+        }
         if (sc.isLoading.value) {
           return Center(child: DotsWaveLoadingText(color: colorScheme.onSurface));
         }
@@ -359,6 +374,7 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
       const double amountWidth = 120;
       const double detailsWidth = 80;
       const double rowHeight = 48;
+      const double shareWidth = 60;
 
       return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -420,6 +436,15 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
                 width: detailsWidth,
                 child: const Text(
                   'Details',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            DataColumn( // Add this new column for share
+              label: SizedBox(
+                width: shareWidth,
+                child: const Text(
+                  'Share',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
@@ -500,7 +525,15 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
                       ),
                     ),
                   ),
+
                 ),
+                DataCell(SizedBox( // Add this new cell for share button
+                  width: shareWidth,
+                  child: IconButton(
+                    icon: const Icon(Icons.share, size: 20),
+                    onPressed: () => _shareBill(entry),
+                  ),
+                )),
               ],
             );
           }),
@@ -515,6 +548,9 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
         ),
       );
     }
+  }
+  void _shareBill(SalesEntry entry) {
+    sc.generateAndShareSalesBill(entry);
   }
 
   Widget _buildGrandTotal(double grandTotal) {
@@ -564,29 +600,41 @@ class _SalesScreenState extends State<SalesScreen> with SingleTickerProviderStat
     Get.defaultDialog(
       title: 'Bill Details - ${entry.billNo}',
       content: SingleChildScrollView(
-        scrollDirection: Axis.vertical,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Item')),
-              DataColumn(label: Text('Batch')),
-              DataColumn(label: Text('Qty')),
-              DataColumn(label: Text('Rate')),
-              DataColumn(label: Text('Amount')),
-            ],
-            rows: entry.items.map((item) {
-              return DataRow(
-                cells: [
-                  DataCell(Text(item.itemName)),
-                  DataCell(Text(item.batchNo)),
-                  DataCell(Text(item.quantity.toStringAsFixed(2))),
-                  DataCell(Text('₹${item.rate.toStringAsFixed(2)}')),
-                  DataCell(Text('₹${item.amount.toStringAsFixed(2)}')),
+        child: Column(
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Item')),
+                  DataColumn(label: Text('Batch')),
+                  DataColumn(label: Text('Qty')),
+                  DataColumn(label: Text('Rate')),
+                  DataColumn(label: Text('Amount')),
                 ],
-              );
-            }).toList(),
-          ),
+                rows: entry.items.map((item) {
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(item.itemName)),
+                      DataCell(Text(item.batchNo)),
+                      DataCell(Text(item.quantity.toStringAsFixed(2))),
+                      DataCell(Text('₹${item.rate.toStringAsFixed(2)}')),
+                      DataCell(Text('₹${item.amount.toStringAsFixed(2)}')),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('Share Bill as PDF'),
+              onPressed: () {
+                Get.back(); // Close the details dialog
+                _shareBill(entry); // Share the bill
+              },
+            ),
+          ],
         ),
       ),
       confirm: TextButton(

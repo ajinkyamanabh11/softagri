@@ -507,6 +507,8 @@ class CustomerLedgerController extends GetxController {
         ),
       );
     }
+    final footer=pw.Footer(title: pw.Text('This is a Computer Generated Report',style: pw.TextStyle(fontStyle: pw.FontStyle.italic,color: PdfColors.grey)));
+
 
     // If no transactions, still create a PDF with header and totals
     if (transactions.isEmpty) {
@@ -528,6 +530,9 @@ class CustomerLedgerController extends GetxController {
                 ),
                 pw.SizedBox(height: 20),
                 _buildTotalsSection(drTotal, crTotal, netOutstanding),
+                pw.SizedBox(height: 20),
+                footer
+
               ],
             );
           },
@@ -548,7 +553,7 @@ class CustomerLedgerController extends GetxController {
       border: pw.TableBorder.all(),
       columnWidths: {
         0: const pw.FlexColumnWidth(1.2), // Date
-        1: const pw.FlexColumnWidth(2.0), // Narration
+        1: const pw.FlexColumnWidth(2.5), // Narration // Increased width for Narration to allow wrapping
         2: const pw.FlexColumnWidth(1.0), // Invoice
         3: const pw.FlexColumnWidth(1.0), // Debit
         4: const pw.FlexColumnWidth(1.0), // Credit
@@ -607,11 +612,15 @@ class CustomerLedgerController extends GetxController {
               ),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(4),
-                child: pw.Text(
-                  transaction.narrations.length > 30
-                      ? '${transaction.narrations.substring(0, 27)}...'
-                      : transaction.narrations,
-                  style: const pw.TextStyle(fontSize: 8),
+                child: pw.Container(
+                  // Use a container with constraints to allow text wrapping
+                  constraints: const pw.BoxConstraints(maxWidth: 150), // Adjust as needed
+                  child: pw.Text(
+                    transaction.narrations,
+                    style: const pw.TextStyle(fontSize: 8),
+                    maxLines: 3, // Allow up to 3 lines for narration
+                    overflow: pw.TextOverflow.clip, // Show ellipsis if still too long
+                  ),
                 ),
               ),
               pw.Padding(
@@ -636,10 +645,11 @@ class CustomerLedgerController extends GetxController {
               pw.Padding(
                 padding: const pw.EdgeInsets.all(4),
                 child: pw.Text(
-                  '${balance.toStringAsFixed(2)}',
+                  balance.toStringAsFixed(2),
                   style: pw.TextStyle(
                     fontSize: 8,
-                    color: balance < 0 ? PdfColors.red : PdfColors.black,
+                    color: balance < 0 ? PdfColors.red : PdfColors.green,
+                    fontWeight: pw.FontWeight.bold
                   ),
                 ),
               ),
