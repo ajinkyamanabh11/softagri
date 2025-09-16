@@ -5,9 +5,13 @@ import 'package:flutter/material.dart';
 
 class DotsWaveLoadingText extends StatefulWidget {
   final Color? color;
+  final String text; // Add text parameter
 
-  final dynamic text;
-  const DotsWaveLoadingText({super.key, this.color, this.text,});
+  const DotsWaveLoadingText({
+    super.key,
+    this.color,
+    this.text = 'Fetching Data', // Default text
+  });
 
   @override
   State<DotsWaveLoadingText> createState() => _DotsWaveLoadingTextState();

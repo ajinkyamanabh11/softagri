@@ -8,7 +8,7 @@ class ItemMasterController extends GetxController{
   var errorMessage=Rx<String?>(null);
   var itemMasterData=<ItemMaster>[].obs;
 
-  final String _baseApiUrl='http://103.26.205.120:5000/read_table';
+  final String _baseApiUrl='http://45.120.139.95:5000/read_table';
   final String _subfolder='20252026';
   final String _filename='softagri.mdb';
 

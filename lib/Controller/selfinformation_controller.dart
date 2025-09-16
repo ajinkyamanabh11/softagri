@@ -37,7 +37,7 @@ class CompanyController extends GetxController {
       }
 
       final response = await http.get(Uri.parse(
-        'http://103.26.205.120:5000/read_table?subfolder=$userIdentifier&filename=softagri.mdb&table=SelfInformation',
+        'http://45.120.139.95:5000/read_table?subfolder=$userIdentifier&filename=softagri.mdb&table=SelfInformation',
       ));
 
       if (response.statusCode == 200) {

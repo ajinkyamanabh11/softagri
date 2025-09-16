@@ -15,7 +15,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 class HttpDataServices extends GetxService {
-  static const String _baseUrl = 'http://103.26.205.120:5000';
+  static const String _baseUrl = 'http://45.120.139.95:5000';
   static const String _filename = 'softagri.mdb';
   final GetStorage _storage = GetStorage();
   final RxList<AccountMaster_Model> accountMasterCache = <AccountMaster_Model>[].obs;

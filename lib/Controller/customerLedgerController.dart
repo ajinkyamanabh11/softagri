@@ -8,6 +8,15 @@ import '../Model/AllAccounts_Model.dart';
 import '../Model/accountMaster_models.dart';
 import '../Model/customer_info_model.dart';
 import '../Services/http_data_service.dart';
+import 'package:printing/printing.dart';
+import '../services/pdf_service.dart';
+import 'dart:io';
+import 'package:get_storage/get_storage.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 class CustomerLedgerController extends GetxController {
   final HttpDataServices _dataService = Get.find<HttpDataServices>();
@@ -38,6 +47,7 @@ class CustomerLedgerController extends GetxController {
   final pageSize = 50;
   final hasMoreDebtors = true.obs;
   final hasMoreCreditors = true.obs;
+  final isGeneratingPdf = false.obs;
 
   // Cached processed data
   final List<Map<String, dynamic>> _allDebtors = [];
@@ -347,6 +357,357 @@ class CustomerLedgerController extends GetxController {
     debtors.addAll(moreItems);
     currentPage.value = nextPage;
     hasMoreDebtors.value = (startIndex + pageSize) < _allDebtors.length;
+  }
+  // Add these methods to your CustomerLedgerController class
+
+  Future<void> generateAndSharePdf(String customerName) async {
+    try {
+      isGeneratingPdf(true); // Set PDF generation flag
+      isLoading(true);
+
+      // Get the current filtered transactions
+      final transactions = filtered.toList();
+      final netOutstanding = drTotal.value - crTotal.value;
+
+      // Generate PDF
+      final pdfFile = await _generateCustomerLedgerPdf(
+        customerName: customerName,
+        transactions: transactions,
+        drTotal: drTotal.value,
+        crTotal: crTotal.value,
+        netOutstanding: netOutstanding,
+      );
+
+      // Share PDF
+      await _sharePdf(pdfFile, customerName);
+
+      Get.snackbar(
+          'Success',
+          'PDF generated and shared successfully',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 2),
+          colorText: Colors.black
+      );
+    } catch (e, st) {
+      error.value = 'Failed to generate PDF: ${e.toString()}';
+      log('Error generating PDF: $e\n$st');
+      Get.snackbar(
+          'Error',
+          'Failed to generate PDF: ${e.toString()}',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 4),
+          colorText: Colors.black
+      );
+    } finally {
+      isGeneratingPdf(false); // Reset PDF generation flag
+      isLoading(false);
+    }
+  }
+
+  String getCurrentCustomerName() {
+    if (searchQuery.value.isEmpty) return 'All Customers';
+    return searchQuery.value;
+  }
+
+  Future<File> _generateCustomerLedgerPdf({
+    required String customerName,
+    required List<AllAccounts_Model> transactions,
+    required double drTotal,
+    required double crTotal,
+    required double netOutstanding,
+  }) async {
+    final pdf = pw.Document();
+    final _box = GetStorage();
+    final companyName = _box.read('companyname') ?? 'Company Name';
+    // Calculate running balance
+    double runningBalance = 0;
+    final transactionsWithBalance = transactions.map((transaction) {
+      runningBalance += transaction.isDr ? transaction.amount : -transaction.amount;
+      return {
+        'transaction': transaction,
+        'balance': runningBalance
+      };
+    }).toList();
+
+    // Header with company info
+    final header = pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(companyName,
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Customer Ledger Report',
+                style: pw.TextStyle(fontSize: 14)),
+          ],
+        ),
+        pw.Text(DateTime.now().toString().split(' ')[0],
+            style: const pw.TextStyle(fontSize: 10)),
+      ],
+    );
+
+    // Customer Info
+    final customerInfo = pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text('Customer: $customerName',
+            style:  pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 5),
+        pw.Text('Generated on: ${DateTime.now()}', style: const pw.TextStyle(fontSize: 10)),
+      ],
+    );
+
+    // Split transactions into chunks for pagination
+    const transactionsPerPage = 30; // Adjust based on your needs
+    final transactionChunks = [];
+    for (var i = 0; i < transactionsWithBalance.length; i += transactionsPerPage) {
+      final end = (i + transactionsPerPage < transactionsWithBalance.length)
+          ? i + transactionsPerPage
+          : transactionsWithBalance.length;
+      transactionChunks.add(transactionsWithBalance.sublist(i, end));
+    }
+
+    for (var pageIndex = 0; pageIndex < transactionChunks.length; pageIndex++) {
+      final chunk = transactionChunks[pageIndex] as List<dynamic>;
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(20),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Header on every page
+                header,
+                pw.SizedBox(height: 10),
+
+                // Customer info only on first page
+                if (pageIndex == 0) customerInfo,
+                if (pageIndex == 0) pw.SizedBox(height: 15),
+
+                // Transactions table
+                _buildTransactionsTable(chunk.cast<Map<String, dynamic>>()),
+
+                // Page info
+                pw.SizedBox(height: 10),
+                pw.Text(
+                  'Page ${pageIndex + 1} of ${transactionChunks.length}',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+
+                // Totals only on last page
+                if (pageIndex == transactionChunks.length - 1) pw.SizedBox(height: 15),
+                if (pageIndex == transactionChunks.length - 1)
+                  _buildTotalsSection(drTotal, crTotal, netOutstanding),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    // If no transactions, still create a PDF with header and totals
+    if (transactions.isEmpty) {
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(20),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                header,
+                pw.SizedBox(height: 10),
+                customerInfo,
+                pw.SizedBox(height: 20),
+                pw.Center(
+                  child: pw.Text('No transactions found',
+                      style: const pw.TextStyle(fontSize: 14)),
+                ),
+                pw.SizedBox(height: 20),
+                _buildTotalsSection(drTotal, crTotal, netOutstanding),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    // Get directory and save file
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/${customerName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_Ledger.pdf');
+    await file.writeAsBytes(await pdf.save());
+
+    return file;
+  }
+
+  pw.Widget _buildTransactionsTable(List<Map<String, dynamic>> transactionsWithBalance) {
+    return pw.Table(
+      border: pw.TableBorder.all(),
+      columnWidths: {
+        0: const pw.FlexColumnWidth(1.2), // Date
+        1: const pw.FlexColumnWidth(2.0), // Narration
+        2: const pw.FlexColumnWidth(1.0), // Invoice
+        3: const pw.FlexColumnWidth(1.0), // Debit
+        4: const pw.FlexColumnWidth(1.0), // Credit
+        5: const pw.FlexColumnWidth(1.2), // Balance
+      },
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        // Table Header
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          children: [
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Date',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Narration',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Invoice',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Debit',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Credit',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Text('Balance',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+            ),
+          ],
+        ),
+
+        // Table Rows
+        ...transactionsWithBalance.map((item) {
+          final transaction = item['transaction'] as AllAccounts_Model;
+          final balance = item['balance'] as double;
+
+          return pw.TableRow(
+            children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(transaction.formattedDate,
+                    style: const pw.TextStyle(fontSize: 8)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(
+                  transaction.narrations.length > 30
+                      ? '${transaction.narrations.substring(0, 27)}...'
+                      : transaction.narrations,
+                  style: const pw.TextStyle(fontSize: 8),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(transaction.invoiceNo ?? '-',
+                    style: const pw.TextStyle(fontSize: 8)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(
+                  transaction.isDr ? transaction.amount.toStringAsFixed(2) : '-',
+                  style: const pw.TextStyle(fontSize: 8),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(
+                  !transaction.isDr ? transaction.amount.toStringAsFixed(2) : '-',
+                  style: const pw.TextStyle(fontSize: 8),
+                ),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(4),
+                child: pw.Text(
+                  '${balance.toStringAsFixed(2)}',
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    color: balance < 0 ? PdfColors.red : PdfColors.black,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ],
+    );
+  }
+
+  pw.Widget _buildTotalsSection(double drTotal, double crTotal, double netOutstanding) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(),
+        borderRadius: pw.BorderRadius.circular(5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Debit Total:', style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Rs. ${drTotal.toStringAsFixed(2)}',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+          pw.SizedBox(height: 6),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Credit Total:', style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Rs. ${crTotal.toStringAsFixed(2)}',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+          pw.Divider(),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Net Outstanding:',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Rs. ${netOutstanding.abs().toStringAsFixed(2)} ${netOutstanding < 0 ? 'Cr' : 'Dr'}',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: pw.FontWeight.bold,
+                    color: netOutstanding < 0 ? PdfColors.red : PdfColors.green,
+                  )),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sharePdf(File file, String customerName) async {
+    // Check and request storage permission if needed
+    if (Platform.isAndroid || Platform.isIOS) {
+      final status = await Permission.storage.status;
+      if (!status.isGranted) {
+        await Permission.storage.request();
+      }
+    }
+
+    // Share the file
+    await Share.shareXFiles([XFile(file.path)],
+        text: 'Customer Ledger for $customerName');
   }
 
   void loadMoreCreditors() {

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:ui'; // Import dart:ui for ImageFilter
-
+import 'package:printing/printing.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -88,9 +88,56 @@ class _CustomerLedger_ScreenState extends State<CustomerLedgerScreen> {
                 }
               },
             ),
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () async {
+                if (ctrl.filtered.isEmpty) {
+                  Get.snackbar(
+                      'No Data',
+                      'No transactions to export',
+                      snackPosition: SnackPosition.BOTTOM,
+                      duration: Duration(seconds: 2),
+                      colorText: Colors.black
+                  );
+                  return;
+                }
+
+                try {
+                  await ctrl.generateAndSharePdf(ctrl.getCurrentCustomerName());
+                } catch (e) {
+                  Get.snackbar(
+                    'Export Failed',
+                    'Could not export PDF: ${e.toString()}',
+                    snackPosition: SnackPosition.BOTTOM,
+                    colorText: Colors.black,
+                  );
+                }
+              },
+            ),
           ],
         ),
         body: Obx(() {
+          if (ctrl.isGeneratingPdf.value) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  DotsWaveLoadingText(
+                    color: onSurfaceColor,
+                    text: 'Converting To PDF',
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    'Converting To PDF...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: onSurfaceColor,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
           if (ctrl.isLoading.value) {
             return Center(child: DotsWaveLoadingText(color: onSurfaceColor));
           }
